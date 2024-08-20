@@ -1,0 +1,10 @@
+version: '3'
+
+services:
+  web:
+    image: up_project:latest
+    container_name: up_orders_project_container
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
