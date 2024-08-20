@@ -1,6 +1,9 @@
 from tastypie.api import Api
 
-from orders_app.resources import UserResource, CustomUserResource, StoreResource, ItemResource
+from orders_app.resources.user_resource import UserResource
+from orders_app.resources.custom_user_resource import CustomUserResource
+from orders_app.resources.store_resource import StoreResource
+from orders_app.resources.item_resource import ItemResource
 
 v1_api = Api(api_name='v1')
 v1_api.register(UserResource())
