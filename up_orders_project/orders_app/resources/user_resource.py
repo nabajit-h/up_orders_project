@@ -53,6 +53,8 @@ class UserResource(ModelResource):
         )
 
         username = data['username']
+        first_name = data['first_name']
+        last_name = data['last_name']
         password = data['password']
         role = data['role']
         email = data['email']
@@ -65,14 +67,22 @@ class UserResource(ModelResource):
         except ValidationError:
             raise ImmediateHttpResponse(response=HttpBadRequest("Email is not valid."))
 
-        user = User(username=username, password=password, email=email)
+        user = User(
+            username=username, 
+            password=password, 
+            email=email,
+            first_name=first_name,
+            last_name=last_name
+        )
         user.set_password(password)
         user.save()
 
         custom_user = CustomUser.objects.create(
             user=user,
-            name=username,
-            role=role
+            username=username,
+            first_name=first_name,
+            last_name=last_name,
+            role=role,
         )
         token = self.generate_token(user_id=user.id, role=custom_user.role)
         return self.create_response(

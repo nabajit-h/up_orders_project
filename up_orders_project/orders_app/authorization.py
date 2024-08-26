@@ -8,10 +8,8 @@ class RoleBasedAuthorization(Authorization):
         self.required_role = required_role
 
     def is_authorized(self, request):
-        print("===authorization===")
         username = request.user
         custom_user = CustomUser.objects.get(user__username=username)
-        print(custom_user.role)
         return custom_user.role == self.required_role
     
     def create_detail(self, object_list, bundle):

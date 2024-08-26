@@ -1,4 +1,4 @@
-from tastypie.resources import ModelResource
+from tastypie.resources import ModelResource, ALL, ALL_WITH_RELATIONS
 from tastypie import fields
 from tastypie.authorization import Authorization
 from tastypie.http import HttpNotFound, HttpUnauthorized
@@ -6,14 +6,14 @@ from tastypie.http import HttpApplicationError
 from django.conf.urls import url
 from tastypie.exceptions import ImmediateHttpResponse
 
-from orders_app.models import CustomUser, Store, Item
-from orders_app.mixins import CustomUserMixin
+from orders_app.models import Store, Item, CustomUser, StoreItem
 from orders_app.authentication import JWTAuthentication
 from orders_app.authorization import RoleBasedAuthorization
 from orders_app.resources.store_resource import StoreResource
+from orders_app.resources.custom_user_resource import CustomUserResource
 
-class ItemResource(ModelResource, CustomUserMixin):
-    store = fields.ForeignKey(StoreResource, 'store')
+class ItemResource(ModelResource):
+    merchant = fields.ForeignKey(CustomUserResource, 'merchant')
 
     class Meta:
         queryset = Item.objects.all()
@@ -25,10 +25,13 @@ class ItemResource(ModelResource, CustomUserMixin):
         include_resource_uri = False
         limit = 20
         filtering = {
-            'store': ['exact'],
-            'name': ['exact', 'icontains']
+            'name': ALL,
+            'category': ALL,
+            'price': ['exact', 'gt', 'lt', 'gte', 'lte'],
+            'store': ALL_WITH_RELATIONS,
+            'merchant': ALL_WITH_RELATIONS
         }
-        excludes = ['store']
+        limit = 20
 
     def prepend_urls(self):
         return [
@@ -52,19 +55,29 @@ class ItemResource(ModelResource, CustomUserMixin):
         data = self.deserialize(
             request, request.body, format=request.META.get("CONTENT_TYPE", "application/json")
         )
-        # custom_user = CustomUser.objects.get(user__username=request.user)
-        name = data['name']
-        category = data['category']
-        price = data['price']
-        store_id = data['store_id']
 
         try:
-            store = Store.objects.get(pk=store_id, merchant__user__username=request.user)
+            name = data['name']
+            description = data['description']
+            category = data['category']
+            price = data['price']
+            store_id = data['store_id']
+
+            custom_user = CustomUser.objects.get(user=request.user)
+            store = Store.objects.get(pk=store_id, merchant=custom_user)
+
             item = Item.objects.create(
                 name=name,
+                description=description,
                 category=category,
                 price=price,
-                store=store
+                merchant=custom_user
+            )
+
+            StoreItem.objects.create(
+                store=store,
+                item=item,
+                count=20
             )
         except Store.DoesNotExist:
             raise ImmediateHttpResponse(response=HttpNotFound("Store not found."))
@@ -85,7 +98,13 @@ class ItemResource(ModelResource, CustomUserMixin):
         self.method_check(request, ['get'])
         self.is_authenticated(request)
 
-        items = Item.objects.all()
+        filters = {}
+
+        for key, value in request.GET.items():
+            if key in self.Meta.filtering:
+                filters[key] = value
+
+        items = Item.objects.filter(**filters)
         bundles = [self.build_bundle(obj=item, request=request) for item in items]
         bundles = [self.full_dehydrate(bundle) for bundle in bundles]
 
@@ -134,28 +153,21 @@ class ItemResource(ModelResource, CustomUserMixin):
         data = self.deserialize(
             request, request.body, format=request.META.get("CONTENT_TYPE", "application/json")
         )
-        name = data['name']
-        category = data['category']
-        price = data['price']
-        store_id = data['store_id']
 
         try:
-            store = Store.objects.get(pk=store_id, merchant__user__username=request.user)
-            item = Item.objects.get(pk=pk, store=store)
-            # if store.merchant.user.username != request.user:
-            #     return self.create_response(
-            #         request,
-            #         {
-            #             'success': False,
-            #             'error_msg': "You are not authroized to perform this action."
-            #         }
-            #     )
-            item.name = name
-            item.category = category
-            item.price = price
+            custom_user = CustomUser.objects.get(user=request.user)
+            item = Item.objects.get(pk=pk, merchant=custom_user)
+
+            if 'name' in data:
+                item.name = data['name']
+            if 'description' in data:
+                item.description = data['description']
+            if 'category' in data:
+                item.category = data['category']
+            if 'price' in data:
+                item.name = data['price']
+
             item.save()
-        except Store.DoesNotExist:
-            raise ImmediateHttpResponse(response=HttpNotFound("Store not found."))
         except Item.DoesNotExist:
             raise ImmediateHttpResponse(response=HttpNotFound("Item not found."))
 
@@ -177,18 +189,18 @@ class ItemResource(ModelResource, CustomUserMixin):
 
         authorization = RoleBasedAuthorization("Merchant")
         if not authorization.is_authorized(request=request):
-            return ImmediateHttpResponse(
+            raise ImmediateHttpResponse(
                 response=HttpUnauthorized("You are unauthorized to perform this action.")
             )
         
         pk = kwargs.get('pk', None)
 
         try:
-            # store = Store.objects.get(pk=pk, merchant__user__username=request.user)
-            item = Item.objects.get(pk=pk)
+            custom_user = CustomUser.objects.get(user=request.user)
+            item = Item.objects.get(pk=pk, merchant=custom_user)
             item.delete()
-        except Store.DoesNotExist:
-            raise ImmediateHttpResponse(response=HttpNotFound("Store not found."))
+        except Item.DoesNotExist:
+            raise ImmediateHttpResponse(response=HttpNotFound("Item not found."))
         except:
             raise ImmediateHttpResponse(response=HttpApplicationError("Could not delete."))
         
@@ -200,5 +212,6 @@ class ItemResource(ModelResource, CustomUserMixin):
             },
             status=202
         )
+    
 
     
