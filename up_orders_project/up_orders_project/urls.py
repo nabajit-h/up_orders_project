@@ -16,7 +16,9 @@ Including another URLconf
 from django.conf.urls import url, include
 from django.contrib import admin
 
+from orders_app.api import v1_api
+
 urlpatterns = [
     url(r'^admin/', admin.site.urls),
-    url(r'^', include('orders_app.urls'))
+    url(r'^api/', include(v1_api.urls))
 ]
